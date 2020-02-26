@@ -10,12 +10,14 @@
 # 15-Feb-2017   Sasha Goldshtein    Created this.
 # 22-Feb-2019   Long Zhang          Modified this.
 
+from prometheus_client import start_http_server, Counter
 from time import sleep, strftime
 import argparse
 import errno
 import itertools
 import sys
 import signal
+import socket
 from bcc import BPF
 from bcc.utils import printb
 from bcc.syscall import syscall_name, syscalls
@@ -200,9 +202,14 @@ def print_count_stats():
     data.clear()
 
 def print_latency_stats():
+    global c_number_total
+    global c_latency_total
+    host_name = socket.gethostname()
+    application_name = comm_for_pid(args.pid)
+
     data = bpf["data"]
     print("[%s]" % strftime("%H:%M:%S"))
-    print("%-22s %8s %16s" % (agg_colname, "COUNT", time_colname))
+    print("%-22s %8s %16s %10s" % (agg_colname, "COUNT", time_colname, "ERRORNO"))
     for k, v in sorted(data.items(),
                        key=lambda kv: -kv[1].total_ns)[:args.top]:
         if k.value == 0xFFFFFFFF:
@@ -210,6 +217,24 @@ def print_latency_stats():
         printb((b"%-22s %8d " + (b"%16.6f" if args.milliseconds else b"%16.3f") + b" %10s") %
                (agg_colval(k), v.count,
                 v.total_ns / (1e6 if args.milliseconds else 1e3), errno.errorcode[abs(v.error_no)]))
+        c_number_total.labels(
+            hostname=host_name,
+            application_name=application_name,
+            pid=args.pid,
+            layer='os',
+            syscall_name=syscall_name(k.value % 10000),
+            error_code=errno.errorcode[abs(v.error_no)],
+            injected_on_purpose=False
+        ).inc(v.count)
+        c_latency_total.labels(
+            hostname=host_name,
+            application_name=application_name,
+            pid=args.pid,
+            layer='os',
+            syscall_name=syscall_name(k.value % 10000),
+            error_code=errno.errorcode[abs(v.error_no)],
+            injected_on_purpose=False
+        ).inc(v.total_ns / (1e6 if args.milliseconds else 1e3))
     print("")
     data.clear()
 
@@ -217,6 +242,12 @@ print("Tracing %ssyscalls, printing top %d... Ctrl+C to quit." %
       ("failed " if args.failures else "", args.top))
 exiting = 0 if args.interval else 1
 seconds = 0
+
+c_labels = ['hostname', 'application_name', 'pid', 'layer', 'syscall_name', 'error_code', 'injected_on_purpose']
+c_number_total = Counter('failed_syscalls_total', 'Failed system calles in a process', c_labels)
+c_latency_total = Counter('failed_syscalls_latency_total', 'The total execution time spent by failed system calles in a process', c_labels)
+start_http_server(8000)
+
 while True:
     try:
         sleep(args.interval)
