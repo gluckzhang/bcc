@@ -127,7 +127,9 @@ TRACEPOINT_PROBE(raw_syscalls, sys_exit) {
 #ifdef BY_PROCESS
     u32 key = pid_tgid >> 32;
 #else
-    u32 key = args->id + -(args->ret * 10000);
+    u32 key = args->id;
+    if (args->ret < 0)
+        key = args->id + -(args->ret * 10000);
 #endif
 
 #ifdef LATENCY
@@ -214,16 +216,22 @@ def print_latency_stats():
                        key=lambda kv: -kv[1].total_ns)[:args.top]:
         if k.value == 0xFFFFFFFF:
             continue    # happens occasionally, we don't need it
-        printb((b"%-22s %8d " + (b"%16.6f" if args.milliseconds else b"%16.3f") + b" %10s") %
+        if v.error_no < 0:
+            return_info = errno.errorcode[abs(v.error_no)]
+        else:
+            # all the system calls whose return value is >= 0
+            # are considered to be successful
+            return_info = "SUCCESS"
+        printb((b"%-22s %8d " + (b"%16.6f" if args.milliseconds else b"%16.3f") + b" %12s") %
                (agg_colval(k), v.count,
-                v.total_ns / (1e6 if args.milliseconds else 1e3), errno.errorcode[abs(v.error_no)]))
+                v.total_ns / (1e6 if args.milliseconds else 1e3), return_info))
         c_number_total.labels(
             hostname=host_name,
             application_name=application_name,
             pid=args.pid,
             layer='os',
             syscall_name=syscall_name(k.value % 10000),
-            error_code=errno.errorcode[abs(v.error_no)],
+            error_code=return_info,
             injected_on_purpose=False
         ).inc(v.count)
         c_latency_total.labels(
@@ -232,7 +240,7 @@ def print_latency_stats():
             pid=args.pid,
             layer='os',
             syscall_name=syscall_name(k.value % 10000),
-            error_code=errno.errorcode[abs(v.error_no)],
+            error_code=return_info,
             injected_on_purpose=False
         ).inc(v.total_ns / (1e6 if args.milliseconds else 1e3))
     print("")
