@@ -59,7 +59,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "increase(failed_syscalls_total{error_code!=\"SUCCESS\"}[15s]) / ignoring(error_code) (increase(failed_syscalls_total{error_code!=\"SUCCESS\"}[15s])+ignoring(error_code) increase(failed_syscalls_total{error_code=\"SUCCESS\"}[15s])) > 0",
+          "expr": "(increase(failed_syscalls_total{error_code!=\"SUCCESS\"}[15s]) / ignoring(error_code) group_left sum without(error_code)(increase(failed_syscalls_total[15s])))",
           "hide": false,
           "refId": "A"
         }
@@ -478,5 +478,5 @@
   "timezone": "",
   "title": "Syscall Monitoring",
   "uid": "lj9w1W_Wk",
-  "version": 6
+  "version": 9
 }
