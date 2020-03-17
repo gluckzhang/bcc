@@ -3,6 +3,7 @@
 # Filename: realistic_failures.py
 
 import csv, requests, sys, getopt, datetime, time
+from prettytable import PrettyTable
 import logging
 
 PROMETHEUS_URL = ''
@@ -21,7 +22,7 @@ def main():
     failure_details = query_failure_detail(failure_category, START, END, STEP)
     failure_details = calculate_failure_rate(failure_details, STEP)
 
-    logging.info(failure_details)
+    pretty_print_details(failure_details)
 
 def handle_args(argv):
     global PROMETHEUS_URL
@@ -143,6 +144,20 @@ def calculate_failure_rate(failure_details, step):
             sample["failure_rate"] = float(sample["failures_count"]) / sample["total_count"]
 
     return failure_details
+
+def pretty_print_details(failure_details):
+    stat_table = PrettyTable()
+    stat_table.field_names = ["Syscall Name", "Error Code", "Cases in Total", "Samples"]
+
+    for detail in failure_details:
+        samples_str = ""
+        for sample in detail["samples"]:
+            localtime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(sample["timestamp"]))
+            samples_str += "localtime: %s, failure rate: %2f\n"%(localtime, sample["failure_rate"])
+        samples_str = samples_str[:-1]
+        stat_table.add_row([detail["syscall_name"], detail["error_code"], detail["cases_in_total"], samples_str])
+
+    print(stat_table)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
