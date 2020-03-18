@@ -45,11 +45,12 @@ class Probe:
     }
 
     @classmethod
-    def configure(cls, mode, probability, count, pid):
+    def configure(cls, mode, probability, count, pid, errorno):
         cls.mode = mode
         cls.probability = probability
         cls.count = count
         cls.pid = pid
+        cls.errorno = errorno
 
     def __init__(self, func, preds, length, entry):
         # length of call chain
@@ -62,8 +63,11 @@ class Probe:
         raise ValueError("error in probe '%s': %s" %
                 (self.spec, err))
 
-    def _get_err(self):
-        return Probe.errno_mapping[Probe.mode]
+    def _get_err(self, bottom=False):
+        if bottom:
+            return Probe.errno_mapping[Probe.mode]
+        else:
+            return Probe.errorno
 
     def _get_if_top(self):
         # ordering guarantees that if this function is top, the last tup is top
@@ -153,7 +157,7 @@ class Probe:
         struct pid_struct *p = m.lookup(&pid);
 
         if (!p)
-                return 0;
+            return 0;
 
         /*
          * preparation for predicate, if necessary
@@ -254,8 +258,8 @@ class Probe:
         return 0;
 }"""
         return text % (self.prep, self.length, pred, Probe.count,
-                self._get_err(), self.pid, self.length - 1, pred, Probe.count,
-                self._get_err())
+                self._get_err(bottom=True), self.pid, self.length - 1, pred, Probe.count,
+                self._get_err(bottom=True))
 
     # presently parses and replaces STRCMP
     # STRCMP exists because string comparison is inconvenient and somewhat buggy
@@ -343,11 +347,14 @@ EXAMPLES:
                 " functionality when call chain and predicates are met",
                 formatter_class=argparse.RawDescriptionHelpFormatter,
                 epilog=Tool.examples)
-        parser.add_argument("-p", "--pid", type=int, help="trace only this pid")
+        parser.add_argument("-p", "--pid", type=int, help="inject failures in this pid")
         parser.add_argument(dest="mode", choices=["kmalloc", "bio", "alloc_page"],
                 help="indicate which base kernel function to fail")
-        parser.add_argument(metavar="spec", dest="spec",
-                help="specify call chain")
+        parser.add_argument(metavar="syscall", dest="syscall",
+                help="specify the syscall to be failed")
+        parser.add_argument("-e", "--errorno", default="-1",
+                metavar="errorno",
+                help="The error number to be injected, e.g., -ENOENT")
         parser.add_argument("-I", "--include", action="append",
                 metavar="header",
                 help="additional header files to include in the BPF program")
@@ -362,7 +369,9 @@ EXAMPLES:
 
         self.program = ""
         self.pid = self.args.pid
-        self.spec = self.args.spec
+        self.syscall = self.args.syscall
+        self.errorno = self.args.errorno
+        self.spec = "%s()"%BPF(text=" ").get_syscall_fnname(self.syscall)
         self.map = {}
         self.probes = []
         self.key = Tool.error_injection_mapping[self.args.mode]
@@ -370,7 +379,7 @@ EXAMPLES:
     # create_probes and associated stuff
     def _create_probes(self):
         self._parse_spec()
-        Probe.configure(self.args.mode, self.args.probability, self.args.count, self.args.pid)
+        Probe.configure(self.args.mode, self.args.probability, self.args.count, self.args.pid, self.args.errorno)
         # self, func, preds, total, entry
 
         # create all the pair probes
