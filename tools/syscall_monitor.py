@@ -10,7 +10,7 @@
 # 15-Feb-2017   Sasha Goldshtein    Created this.
 # 22-Feb-2020   Long Zhang          Modified this.
 
-from prometheus_client import start_http_server, Counter
+from prometheus_client import start_http_server, Counter, Gauge
 from time import sleep, strftime
 import argparse
 import errno
@@ -243,6 +243,24 @@ def print_latency_stats():
             error_code=return_info,
             injected_on_purpose=False
         ).inc(v.total_ns / (1e6 if args.milliseconds else 1e3))
+        g_number_per_second.labels(
+            hostname=host_name,
+            application_name=application_name,
+            pid=args.pid,
+            layer='os',
+            syscall_name=syscall_name(k.value % 10000),
+            error_code=return_info,
+            injected_on_purpose=False
+        ).set(v.count)
+        g_latency_per_second.labels(
+            hostname=host_name,
+            application_name=application_name,
+            pid=args.pid,
+            layer='os',
+            syscall_name=syscall_name(k.value % 10000),
+            error_code=return_info,
+            injected_on_purpose=False
+        ).inc(v.total_ns / (1e6 if args.milliseconds else 1e3))
     print("")
     data.clear()
 
@@ -252,8 +270,10 @@ exiting = 0 if args.interval else 1
 seconds = 0
 
 c_labels = ['hostname', 'application_name', 'pid', 'layer', 'syscall_name', 'error_code', 'injected_on_purpose']
-c_number_total = Counter('failed_syscalls_total', 'Failed system calles in a process', c_labels)
+c_number_total = Counter('failed_syscalls_total', 'Failed system calls in a process', c_labels)
 c_latency_total = Counter('failed_syscalls_latency_total', 'The total execution time spent by failed system calles in a process', c_labels)
+g_number_per_second = Gauge('syscalls_per_second', 'System calls invoked by a process during the last second', c_labels)
+g_latency_per_second = Gauge('syscalls_latency_per_second', 'The total execution time spent by system calles in a process during last second', c_labels)
 start_http_server(8000)
 
 while True:
