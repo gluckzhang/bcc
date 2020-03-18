@@ -217,7 +217,10 @@ def print_latency_stats():
         if k.value == 0xFFFFFFFF:
             continue    # happens occasionally, we don't need it
         if v.error_no < 0:
-            return_info = errno.errorcode[abs(v.error_no)]
+            try:
+                return_info = errno.errorcode[abs(v.error_no)]
+            except KeyError:
+                return_info = v.error_no
         else:
             # all the system calls whose return value is >= 0
             # are considered to be successful
