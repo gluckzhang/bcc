@@ -50,7 +50,7 @@ parser.add_argument("-i", "--interval", type=int,
     help="print summary at this interval (seconds)")
 parser.add_argument("-d", "--duration", type=int,
     help="total duration of trace, in seconds")
-parser.add_argument("-T", "--top", type=int, default=10,
+parser.add_argument("-T", "--top", type=int, default=500,
     help="print only the top syscalls by count or latency")
 parser.add_argument("-x", "--failures", action="store_true",
     help="trace only failed syscalls (return < 0)")
