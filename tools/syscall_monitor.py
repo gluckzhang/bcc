@@ -211,10 +211,12 @@ def print_latency_stats():
 
     data = bpf["data"]
     print("[%s]" % strftime("%H:%M:%S"))
-    print("%-22s %8s %16s %10s" % (agg_colname, "COUNT", time_colname, "ERRORNO"))
+    print("%-22s %8s %16s %12s %12s" % (agg_colname, "COUNT", time_colname, "ERRORNO", "PERCENTAGE"))
+
+    data_summary = dict()
     for k, v in sorted(data.items(),
                        key=lambda kv: -kv[1].total_ns)[:args.top]:
-        if k.value == 0xFFFFFFFF:
+        if k.value == 0xFFFFFFFF or k.value == 9999:
             continue    # happens occasionally, we don't need it
         if v.error_no < 0:
             try:
@@ -225,45 +227,54 @@ def print_latency_stats():
             # all the system calls whose return value is >= 0
             # are considered to be successful
             return_info = "SUCCESS"
-        printb((b"%-22s %8d " + (b"%16.6f" if args.milliseconds else b"%16.3f") + b" %12s") %
-               (agg_colval(k), v.count,
-                v.total_ns / (1e6 if args.milliseconds else 1e3), return_info))
-        c_number_total.labels(
-            hostname=host_name,
-            application_name=application_name,
-            pid=args.pid,
-            layer='os',
-            syscall_name=syscall_name(k.value % 10000),
-            error_code=return_info,
-            injected_on_purpose=False
-        ).inc(v.count)
-        c_latency_total.labels(
-            hostname=host_name,
-            application_name=application_name,
-            pid=args.pid,
-            layer='os',
-            syscall_name=syscall_name(k.value % 10000),
-            error_code=return_info,
-            injected_on_purpose=False
-        ).inc(v.total_ns / (1e6 if args.milliseconds else 1e3))
-        g_number_per_second.labels(
-            hostname=host_name,
-            application_name=application_name,
-            pid=args.pid,
-            layer='os',
-            syscall_name=syscall_name(k.value % 10000),
-            error_code=return_info,
-            injected_on_purpose=False
-        ).set(v.count)
-        g_latency_per_second.labels(
-            hostname=host_name,
-            application_name=application_name,
-            pid=args.pid,
-            layer='os',
-            syscall_name=syscall_name(k.value % 10000),
-            error_code=return_info,
-            injected_on_purpose=False
-        ).inc(v.total_ns / (1e6 if args.milliseconds else 1e3))
+
+        key = syscall_name(k.value % 10000)
+        if data_summary.has_key(key):
+            data_summary[key]["total_count"] = data_summary[key]["total_count"] + v.count
+            data_summary[key]["details"].append({"return_code": return_info, "count": v.count, "latency": v.total_ns / (1e6 if args.milliseconds else 1e3)})
+        else:
+            data_summary[key] = {
+                "total_count": v.count,
+                "details": [{"return_code": return_info, "count": v.count, "latency": v.total_ns / (1e6 if args.milliseconds else 1e3)}]
+            }
+
+    for syscall, info in data_summary.items():
+        for detail in info["details"]:
+            detail["percentage"] = float(detail["count"]) / info["total_count"]
+            printb((b"%-22s %8d " + (b"%16.6f" if args.milliseconds else b"%16.3f") + b" %12s %12.5f") %
+                   (syscall, detail["count"],
+                    detail["latency"], detail["return_code"], detail["percentage"]))
+
+            # export metrics
+            c_number_total.labels(
+                hostname=host_name,
+                application_name=application_name,
+                pid=args.pid,
+                layer='os',
+                syscall_name=syscall,
+                error_code=detail["return_code"],
+                injected_on_purpose=False
+            ).inc(detail["count"])
+            c_latency_total.labels(
+                hostname=host_name,
+                application_name=application_name,
+                pid=args.pid,
+                layer='os',
+                syscall_name=syscall,
+                error_code=detail["return_code"],
+                injected_on_purpose=False
+            ).inc(detail["latency"])
+            if detail["return_code"] != "SUCCESS":
+                g_failure_rate.labels(
+                    hostname=host_name,
+                    application_name=application_name,
+                    pid=args.pid,
+                    layer='os',
+                    syscall_name=syscall,
+                    error_code=detail["return_code"],
+                    injected_on_purpose=False
+                ).set(detail["percentage"])
+
     print("")
     data.clear()
 
@@ -275,8 +286,7 @@ seconds = 0
 c_labels = ['hostname', 'application_name', 'pid', 'layer', 'syscall_name', 'error_code', 'injected_on_purpose']
 c_number_total = Counter('failed_syscalls_total', 'Failed system calls in a process', c_labels)
 c_latency_total = Counter('failed_syscalls_latency_total', 'The total execution time spent by failed system calles in a process', c_labels)
-g_number_per_second = Gauge('syscalls_per_second', 'System calls invoked by a process during the last second', c_labels)
-g_latency_per_second = Gauge('syscalls_latency_per_second', 'The total execution time spent by system calles in a process during last second', c_labels)
+g_failure_rate = Gauge('syscalls_failure_rate', 'The rate of failures categorized by the types of system calls.', c_labels)
 start_http_server(8000)
 
 while True:
