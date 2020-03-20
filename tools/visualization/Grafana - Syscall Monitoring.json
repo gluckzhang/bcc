@@ -59,7 +59,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "(increase(failed_syscalls_total{error_code!=\"SUCCESS\"}[15s]) / ignoring(error_code) group_left sum without(error_code)(increase(failed_syscalls_total[15s])))",
+          "expr": "syscalls_failure_rate",
           "hide": false,
           "refId": "A"
         }
@@ -232,7 +232,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "rate(failed_syscalls_total[15s])",
+          "expr": "rate(failed_syscalls_total[30s])",
           "refId": "A"
         }
       ],
@@ -404,7 +404,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "rate(failed_syscalls_latency_total[15s])",
+          "expr": "rate(failed_syscalls_latency_total[30s])",
           "refId": "A"
         }
       ],
@@ -450,7 +450,7 @@
       }
     }
   ],
-  "refresh": "10s",
+  "refresh": false,
   "schemaVersion": 22,
   "style": "dark",
   "tags": [],
@@ -478,5 +478,5 @@
   "timezone": "",
   "title": "Syscall Monitoring",
   "uid": "lj9w1W_Wk",
-  "version": 9
+  "version": 11
 }
