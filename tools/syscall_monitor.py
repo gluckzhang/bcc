@@ -206,6 +206,7 @@ def print_count_stats():
 def print_latency_stats():
     global c_number_total
     global c_latency_total
+    global g_failure_rate
     host_name = socket.gethostname()
     application_name = comm_for_pid(args.pid)
 
@@ -238,6 +239,7 @@ def print_latency_stats():
                 "details": [{"return_code": return_info, "count": v.count, "latency": v.total_ns / (1e6 if args.milliseconds else 1e3)}]
             }
 
+    g_failure_rate._metrics.clear() # otherwise, if the failure has gone, the metric (failure rate) will stay the same
     for syscall, info in data_summary.items():
         for detail in info["details"]:
             detail["percentage"] = float(detail["count"]) / info["total_count"]
