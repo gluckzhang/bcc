@@ -71,8 +71,9 @@ def fetch_email(receiver):
     return {"subject": subject, "content": content}
 
 def validate_email(email, expected_subject, expected_content):
-    logging.info(email)
-    return False
+    subject_match = True if expected_subject == email["subject"] else False
+    content_match = True if expected_content == email["content"] else False
+    return subject_match and content_match
 
 def main():
     global SENDER
@@ -84,12 +85,19 @@ def main():
             subject = "Hello world - %d"%time_now
             content = "Hi, this email was sent at %d"%time_now
             send_email(SENDER, RECEIVER, subject, content)
+            logging.info("An email was sent by %s <%s> at %d"%(SENDER["name"], SENDER["address"], time_now))
             time.sleep(60)
 
             latest_email = fetch_email(RECEIVER)
             result = validate_email(latest_email, subject, content)
 
-            logging.info(result)
+            if result:
+                logging.info("Email validation passed.")
+            else:
+                logging.warning("Email validation failed!")
+
+            time.sleep(1)
+
         except KeyboardInterrupt:
             exit()
 
